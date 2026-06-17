@@ -1,32 +1,30 @@
 /* ===== Noelle West Retail Calculator - app.js ===== */
-/* Live data from Google Sheets via CSV export        */
+/* Live data from Google Sheets via CSV export (gid-based) */
 
 window.latestSubmissionText = '';
 
 /* ── Config ──────────────────────────────────────────────────────────────── */
-const SHEET_ID  = '1-QD9UJ99Rjl1JPlBdKPo7hz5MBOiJKkMyD-qWlD520s';
-const CSV_BASE  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&sheet=`;
+const SHEET_ID = '1-QD9UJ99Rjl1JPlBdKPo7hz5MBOiJKkMyD-qWlD520s';
+const CSV_BASE = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=`;
 
-// Retail-eligible tracked sheets in display order.
-// label = what shows in the UI, sheet = exact tab name in Google Sheets.
-// priceHeader = column header text to look for (case-insensitive partial match).
+// gid = numeric sheet ID from the Google Sheets URL — guarantees the correct tab
 const RETAIL_SHEETS = [
-  { label: 'BGI',     sheet: 'BGI',     priceHeader: 'retail' },
-  { label: 'BGS',     sheet: 'BGS',     priceHeader: 'retail' },
-  { label: 'PGI',     sheet: 'PGI',     priceHeader: 'retail' },
-  { label: 'PGS',     sheet: 'PGS',     priceHeader: 'retail' },
-  { label: 'PGC',     sheet: 'PGC',     priceHeader: 'retail' },
-  { label: 'FIL',     sheet: 'FIL',     priceHeader: 'retail' },
-  { label: 'MG',      sheet: 'MG',      priceHeader: 'retail' },
-  { label: 'CD',      sheet: 'CD',      priceHeader: 'retail' },
-  { label: 'MS',      sheet: 'MS',      priceHeader: 'retail' },
-  { label: 'CS',      sheet: 'CS',      priceHeader: 'retail' },
-  { label: 'S-UPPER', sheet: 'S-UPPER', priceHeader: 'retail' },
+  { label: 'BGI',     gid: '189628887',  priceHeader: 'retail' },
+  { label: 'BGS',     gid: '1149316761', priceHeader: 'retail' },
+  { label: 'PGI',     gid: '1078506480', priceHeader: 'retail' },
+  { label: 'PGS',     gid: '1175324516', priceHeader: 'retail' },
+  { label: 'PGC',     gid: '1142319531', priceHeader: 'retail' },
+  { label: 'FIL',     gid: '1338479475', priceHeader: 'retail' },
+  { label: 'MG',      gid: '479297482',  priceHeader: 'retail' },
+  { label: 'CD',      gid: '159828861',  priceHeader: 'retail' },
+  { label: 'MS',      gid: '810437052',  priceHeader: 'retail' },
+  { label: 'CS',      gid: '1877793641', priceHeader: 'retail' },
+  { label: 'S-UPPER', gid: '1177779497', priceHeader: 'retail' },
 ];
 
 /* ── State ───────────────────────────────────────────────────────────────── */
-let allItems       = [];   // [{category, name, retailPrice}]
-let cart           = [];   // [{category, name, retailPrice}]
+let allItems       = [];
+let cart           = [];
 let itemSelectInst = null;
 
 /* ── Utility ─────────────────────────────────────────────────────────────── */
@@ -55,8 +53,8 @@ function parseCSV(text) {
     const ch = text[i], next = text[i + 1];
     if (inQuote) {
       if (ch === '"' && next === '"') { field += '"'; i++; }
-      else if (ch === '"')             { inQuote = false; }
-      else                             { field += ch; }
+      else if (ch === '"')            { inQuote = false; }
+      else                            { field += ch; }
     } else {
       if      (ch === '"')  { inQuote = true; }
       else if (ch === ',')  { row.push(field); field = ''; }
@@ -69,11 +67,11 @@ function parseCSV(text) {
   return rows;
 }
 
-/* ── Fetch one sheet ─────────────────────────────────────────────────────── */
-async function fetchSheet({ label, sheet, priceHeader }) {
-  const url = CSV_BASE + encodeURIComponent(sheet);
+/* ── Fetch one sheet by gid ──────────────────────────────────────────────── */
+async function fetchSheet({ label, gid, priceHeader }) {
+  const url = CSV_BASE + gid;
   const res  = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} for "${sheet}"`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} for "${label}" (gid ${gid})`);
   const rows = parseCSV(await res.text());
   if (rows.length < 2) return [];
 
@@ -114,7 +112,7 @@ async function loadAllSheets() {
     if (r.status === 'fulfilled') {
       allItems.push(...r.value);
     } else {
-      console.warn(`Sheet "${RETAIL_SHEETS[i].sheet}" skipped:`, r.reason);
+      console.warn(`Sheet "${RETAIL_SHEETS[i].label}" skipped:`, r.reason);
     }
   });
 
@@ -129,10 +127,8 @@ async function loadAllSheets() {
 }
 
 function showLoading(on, msg) {
-  const bar  = document.getElementById('loadingBar');
-  const main = document.getElementById('mainContent');
-  bar.style.display  = on ? 'flex' : 'none';
-  main.style.display = on ? 'none'  : 'block';
+  document.getElementById('loadingBar').style.display  = on ? 'flex'  : 'none';
+  document.getElementById('mainContent').style.display = on ? 'none'  : 'block';
   if (msg) {
     const lbl = document.getElementById('loadingLabel');
     if (lbl) lbl.textContent = msg;
@@ -171,7 +167,6 @@ function init() {
 
 /* ── Category select ─────────────────────────────────────────────────────── */
 function populateCategorySelect() {
-  // Use RETAIL_SHEETS order, only show categories that actually loaded items
   const loadedCats = new Set(allItems.map(i => i.category));
   const sel = document.getElementById('categorySelect');
   sel.innerHTML = '<option value="">— Select category —</option>';
@@ -329,12 +324,10 @@ function updateJotform() {
   );
   window.latestSubmissionText = lines.length ? lines.join('\n') : 'No items selected';
 
-  // Primary: Jotform widget API
   if (window.JFCustomWidget && typeof JFCustomWidget.sendData === 'function') {
     JFCustomWidget.sendData({ value: window.latestSubmissionText });
   }
 
-  // Fallback: directly write into #input_116 on the parent Jotform page
   try {
     const target =
       document.getElementById('input_116') ||
