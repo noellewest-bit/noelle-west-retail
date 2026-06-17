@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noelle West Retail Calculator</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tom-select/2.3.1/css/tom-select.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tom-select/2.3.1/js/tom-select.complete.min.js"></script>
+  <script src="https://js.jotform.com/JotFormCustomWidget.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- Header -->
+  <div class="app-header">
+    <h1>Noelle West Retail Calculator</h1>
+    <p>Select items to build your retail summary</p>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loadingBar" style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:40px 16px;">
+    <div class="spinner"></div>
+    <div id="loadingLabel" style="font-size:13px;color:var(--text-muted)">Loading inventory…</div>
+  </div>
+
+  <!-- Error state -->
+  <div id="loadError" style="display:none;background:#FDECEA;color:#C0392B;
+    border:1px solid rgba(192,57,43,0.2);border-radius:var(--radius-sm);
+    padding:12px 16px;font-size:13px;margin-bottom:14px;"></div>
+
+  <!-- Main content (hidden until loaded) -->
+  <div id="mainContent" style="display:none">
+
+    <!-- Add Item Card -->
+    <div class="card">
+      <div class="card-title">Add Item</div>
+
+      <div class="form-grid">
+        <div class="field-group">
+          <div class="field-label">Category</div>
+          <select id="categorySelect">
+            <option value="">— Select category —</option>
+          </select>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label">Item</div>
+          <input type="text" id="itemSelect" placeholder="Select a category first" />
+        </div>
+      </div>
+
+      <div class="rate-preview" style="margin-top:10px">
+        <span class="rate-label">Retail Price</span>
+        <span class="rate-value empty" id="priceVal">Select an item</span>
+      </div>
+
+      <div class="error-msg" id="dupWarning"></div>
+
+      <button class="btn-add" id="addBtn" disabled style="margin-top:10px">
+        + Add to List
+      </button>
+    </div>
+
+    <!-- Total -->
+    <div class="total-card">
+      <div class="total-label">Purchase Total</div>
+      <div class="total-amount" id="grandTotal">₱0</div>
+      <div class="total-count" id="itemCount">0 items</div>
+    </div>
+
+    <!-- Items purchased -->
+    <div class="card">
+      <div class="card-title">
+        Items Purchased
+        <span class="badge" id="itemsBadge">0</span>
+      </div>
+      <div class="items-empty" id="itemsEmpty">
+        No items added yet. Use the form above to get started.
+      </div>
+      <div id="itemsList"></div>
+    </div>
+
+  </div><!-- /mainContent -->
+
+</div><!-- /app-shell -->
+
+<script src="app.js"></script>
+</body>
+</html>
