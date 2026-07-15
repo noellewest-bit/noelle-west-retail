@@ -431,9 +431,9 @@ function updateJotform() {
   // Ping Apps Script with grand total
   try {
     const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJhhGu_5QfQYmOfswMNZPRGxnKD8PgU5DxKAI6DFCKgPUlU4gX7H-FKLOWoV6Ea65B/exec";
-    let sid = "form_242352946598066";
+    let sid = "load_" + Math.floor(Date.now() / 5000);
     console.log("[AppScript] retail pinging session:", sid, "total:", retailTotal.toFixed(2));
-    fetch(`${APPS_SCRIPT_URL}?action=set&session=${sid}&source=retail&total=${retailTotal.toFixed(2)}`)
+    fetch(`${APPS_SCRIPT_URL}?action=set&load_id=${sid}&source=retail&total=${retailTotal.toFixed(2)}`)
       .then(r => r.json())
       .then(d => console.log("[AppScript] retail response:", JSON.stringify(d)))
       .catch(e => console.log("[AppScript] retail error:", e.message));
