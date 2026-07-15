@@ -417,6 +417,17 @@ function updateJotform() {
   // Save to localStorage for extra restore reliability
   if (window._jfSid) saveToLocalStorage(window._jfSid, window.latestSubmissionText);
 
+  // Broadcast grand total to total widget
+  const retailTotal = cart.reduce((sum, i) => sum + (i.retailPrice || 0), 0);
+  try {
+    window.parent.postMessage(JSON.stringify({
+      type: 'widgetValue', valid: true,
+      value: window.latestSubmissionText,
+      grandTotal: retailTotal.toFixed(2),
+      source: 'retail_calculator'
+    }), '*');
+  } catch(e) {}
+
   // Method 1: JotForm widget API
   if (window.JFCustomWidget && typeof JFCustomWidget.sendData === 'function') {
     JFCustomWidget.sendData({ value: window.latestSubmissionText });
