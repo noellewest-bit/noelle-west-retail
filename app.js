@@ -1,5 +1,6 @@
 /* ===== Noelle West Retail Calculator - app.js ===== */
 /* Live data from Google Sheets via CSV export (gid-based) */
+/* Supports JotForm edit/restore via ready event + localStorage */
 
 window.latestSubmissionText = '';
 
@@ -7,7 +8,6 @@ window.latestSubmissionText = '';
 const SHEET_ID = '1-QD9UJ99Rjl1JPlBdKPo7hz5MBOiJKkMyD-qWlD520s';
 const CSV_BASE = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=`;
 
-// gid = numeric sheet ID from the Google Sheets URL — guarantees the correct tab
 const RETAIL_SHEETS = [
   { label: 'BGI',     gid: '189628887',  priceHeader: 'retail' },
   { label: 'BGS',     gid: '1149316761', priceHeader: 'retail' },
@@ -57,19 +57,19 @@ function parseCSV(text) {
       else                            { field += ch; }
     } else {
       if      (ch === '"')  { inQuote = true; }
-      else if (ch === ',')  { row.push(field); field = ''; }
-      else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (ch === ',')  { row.push(field.trim()); field = ''; }
+      else if (ch === '\n') { row.push(field.trim()); rows.push(row); row = []; field = ''; }
       else if (ch === '\r') { /* skip */ }
       else                  { field += ch; }
     }
   }
-  if (field || row.length) { row.push(field); rows.push(row); }
-  return rows;
+  if (field || row.length) { row.push(field.trim()); rows.push(row); }
+  return rows.filter(r => r.some(c => c !== ''));
 }
 
 /* ── Fetch one sheet by gid ──────────────────────────────────────────────── */
 async function fetchSheet({ label, gid, priceHeader }) {
-  const url = CSV_BASE + gid;
+  const url  = CSV_BASE + gid;
   const res  = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} for "${label}" (gid ${gid})`);
   const rows = parseCSV(await res.text());
@@ -124,6 +124,14 @@ async function loadAllSheets() {
   }
 
   init();
+
+  // Apply restore text captured from JotForm ready event (which fires before data loads)
+  const textToRestore = window._savedRestoreText || null;
+  if (textToRestore) {
+    console.log('[retail] applying saved restore text');
+    window._savedRestoreText = null;
+    restoreFromSummary(textToRestore);
+  }
 }
 
 function showLoading(on, msg) {
@@ -153,16 +161,98 @@ function init() {
     const btn = e.target.closest('.btn-remove');
     if (btn) removeItem(btn.dataset.name, btn.dataset.cat);
   });
+}
 
-  if (window.JFCustomWidget) {
-    JFCustomWidget.subscribe('submit', function () {
-      updateJotform();
-      JFCustomWidget.sendSubmit({
-        valid: true,
-        value: window.latestSubmissionText || 'No items selected'
-      });
+/* ── JotForm setup ───────────────────────────────────────────────────────── */
+function setupJotform() {
+  if (typeof JFCustomWidget === 'undefined') return;
+
+  JFCustomWidget.subscribe('submit', function () {
+    updateJotform();
+    JFCustomWidget.sendSubmit({
+      valid: true,
+      value: window.latestSubmissionText || 'No items selected'
     });
+  });
+
+  // 'ready' fires when the form loads — on edit submissions it contains the saved value
+  JFCustomWidget.subscribe('ready', function (data) {
+    console.log('[retail ready] value:', data?.value ? data.value.substring(0, 60) : 'none');
+
+    const raw = data?.value || '';
+
+    // Store restore text to apply once inventory has finished loading
+    if (raw && raw.includes('Product Name:') && !window._savedRestoreText) {
+      window._savedRestoreText = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+      console.log('[retail ready] stored restore text');
+    }
+
+    // Capture submission ID for localStorage keying
+    const sid = String(data?.sid || data?.submissionID || data?.submissionId || '');
+    if (sid) window._jfSid = sid;
+  });
+
+  // Some JotForm embed modes send the sid via postMessage
+  window.addEventListener('message', function (e) {
+    try {
+      const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!msg) return;
+      const sid = msg.sid || msg.submissionID || msg.submissionId;
+      if (sid && !window._jfSid) window._jfSid = String(sid);
+    } catch (e) {}
+  });
+}
+
+/* ── localStorage helpers ────────────────────────────────────────────────── */
+function saveToLocalStorage(sid, text) {
+  if (!sid || !text) return;
+  try { localStorage.setItem('jf_retail_' + sid, text); } catch (e) {}
+}
+
+function loadFromLocalStorage(sid) {
+  if (!sid) return null;
+  try { return localStorage.getItem('jf_retail_' + sid) || null; } catch (e) { return null; }
+}
+
+/* ── Restore from saved summary ──────────────────────────────────────────── */
+function restoreFromSummary(text) {
+  if (!text || !text.includes('Product Name:')) {
+    console.log('[retail restore] no valid text');
+    return;
   }
+  console.log('[retail restore] starting:', text.substring(0, 80));
+
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    .split('\n').map(l => l.trim()).filter(Boolean);
+
+  let restored = 0;
+  for (const line of lines) {
+    // Format: "Product Name: ABHAYA, Amount: 12000"
+    const match = line.match(/^Product Name:\s*(.+?),\s*Amount:\s*([\d.]+)$/);
+    if (!match) continue;
+
+    const name   = match[1].trim();
+    const amount = parseFloat(match[2]);
+
+    // Find in master list by name (search across all categories)
+    const masterItem = allItems.find(i => i.name === name);
+    if (!masterItem) {
+      console.log('[retail restore] not found in master:', name);
+      continue;
+    }
+
+    // Avoid duplicates
+    if (cart.find(c => c.name === name && c.category === masterItem.category)) continue;
+
+    // Use the saved amount (preserves price at time of original entry)
+    cart.push({ ...masterItem, retailPrice: amount });
+    restored++;
+    console.log('[retail restore] restored:', name, amount);
+  }
+
+  console.log('[retail restore] total restored:', restored);
+  renderCart();
+  updateJotform();
 }
 
 /* ── Category select ─────────────────────────────────────────────────────── */
@@ -317,28 +407,51 @@ function renderCart() {
   totalEl.textContent = money(total);
 }
 
-/* ── Jotform output ──────────────────────────────────────────────────────── */
+/* ── JotForm output ──────────────────────────────────────────────────────── */
 function updateJotform() {
   const lines = cart.map(i =>
     `Product Name: ${i.name}, Amount: ${Math.round(i.retailPrice)}`
   );
   window.latestSubmissionText = lines.length ? lines.join('\n') : 'No items selected';
 
+  // Save to localStorage for extra restore reliability
+  if (window._jfSid) saveToLocalStorage(window._jfSid, window.latestSubmissionText);
+
+  // Method 1: JotForm widget API
   if (window.JFCustomWidget && typeof JFCustomWidget.sendData === 'function') {
     JFCustomWidget.sendData({ value: window.latestSubmissionText });
   }
 
-  try {
-    const target =
-      document.getElementById('input_116') ||
-      (window.parent && window.parent.document.getElementById('input_116'));
-    if (target) {
-      target.value = window.latestSubmissionText;
-      target.dispatchEvent(new Event('input',  { bubbles: true }));
-      target.dispatchEvent(new Event('change', { bubbles: true }));
+  // Method 2: Direct DOM write to #input_116
+  function writeToField(doc) {
+    const field = doc.querySelector('#input_116');
+    if (field) {
+      field.value = window.latestSubmissionText;
+      field.dispatchEvent(new Event('input',  { bubbles: true }));
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
     }
-  } catch (e) { /* cross-origin — silently ignored */ }
+    return false;
+  }
+  if (!writeToField(document)) {
+    try { writeToField(window.parent.document); } catch (e) {}
+    try { writeToField(window.top.document);    } catch (e) {}
+  }
 }
 
 /* ── Boot ────────────────────────────────────────────────────────────────── */
-loadAllSheets();
+// Wait for JFCustomWidget to be injected by JotForm (it loads asynchronously)
+const waitForJotform = () => new Promise(resolve => {
+  if (typeof JFCustomWidget !== 'undefined') { resolve(); return; }
+  const iv = setInterval(() => {
+    if (typeof JFCustomWidget !== 'undefined') { clearInterval(iv); resolve(); }
+  }, 50);
+  // Give up after 5s — still works standalone/preview without JotForm
+  setTimeout(() => { clearInterval(iv); resolve(); }, 5000);
+});
+
+(async () => {
+  await waitForJotform();
+  setupJotform();       // subscribe to ready + submit BEFORE data loads
+  await loadAllSheets(); // data loads, then restore fires if ready already captured text
+})();
