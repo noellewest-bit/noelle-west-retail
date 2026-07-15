@@ -420,7 +420,7 @@ function updateJotform() {
   // Broadcast grand total to total widget
   const retailTotal = cart.reduce((sum, i) => sum + (i.retailPrice || 0), 0);
   try {
-    window.parent.postMessage(JSON.stringify({
+    window.top.postMessage(JSON.stringify({
       type: 'widgetValue', valid: true,
       value: window.latestSubmissionText,
       grandTotal: retailTotal.toFixed(2),
